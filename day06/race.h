@@ -65,16 +65,33 @@ long getRaceAnswer(bool fixInputKerning) {
             long record = distances[i];
             long startTime = 0;
             long endTime = 0;
+            long timeDelta = pow(10, digitCount(totalTime) - 2);
+            bool narrowing = false;
 
-            for (long time = 0; !startTime && time < times[i]; time++) {
+            for (long time = 0; !startTime && time < times[i]; time += timeDelta) {
                 if (time * (totalTime - time) > record) {
-                    startTime = time;
+                    if (narrowing) {
+                        startTime = time;
+                    } else {
+                        narrowing = true;
+                        time -= timeDelta;
+                        timeDelta = 1;
+                    }
                 }
             }
 
-            for (long time = times[i]; !endTime && time >= 0; time--) {
+            narrowing = false;
+            timeDelta = pow(10, digitCount(totalTime) - 2);
+
+            for (long time = times[i]; !endTime && time >= 0; time -= timeDelta) {
                 if (time * (totalTime - time) > record) {
-                    endTime = time;
+                    if (narrowing) {
+                        endTime = time;
+                    } else {
+                        narrowing = true;
+                        time += timeDelta;
+                        timeDelta = 1;
+                    }
                 }
             }
 
