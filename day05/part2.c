@@ -3,27 +3,35 @@
 #include "garden.h"
 
 int main() {
-    struct Garden *garden = getGarden();
+    struct Garden *garden = getGarden(true);
 
     if (garden) {
         struct Map *map;
-        long answer = 1000000000000000000;
+        long value;
+        long location = 0;
+        long locationDelta = 10000;
+        bool narrowing = false;
+        long answer = 0;
 
-        for (int i = 0; i < garden->seeds->count; i += 2) {
-            for (int j = 0; j < garden->seeds->data[i + 1]; j++) {
-                map = garden->map;
-                long value = garden->seeds->data[i] + j;
+        while (!answer) {
+            if (location >= 0) {
+                value = processValue(garden, location);
 
-                while (map) {
-                    value = mapValue(value, map->ranges);
-
-                    map = map->next;
-                }
-
-                if (value < answer) {
-                    answer = value;
+                for (int i = 0; !answer && i < garden->seeds->count; i += 2) {
+                    if (value >= garden->seeds->data[i] && 
+                        value < garden->seeds->data[i] + garden->seeds->data[i + 1]) {
+                        if (narrowing) {
+                            answer = location;
+                        } else {
+                            narrowing = true;
+                            location -= 10000;
+                            locationDelta = 1;
+                        }
+                    }
                 }
             }
+
+            location += locationDelta;
         }
 
         freeGarden(garden);

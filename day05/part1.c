@@ -3,23 +3,15 @@
 #include "garden.h"
 
 int main() {
-    struct Garden *garden = getGarden();
+    struct Garden *garden = getGarden(false);
 
     if (garden) {
-        struct Map *map;
-        long answer = 1000000000000000000;
+        long answer = 0;
 
         for (int i = 0; i < garden->seeds->count; i++) {
-            map = garden->map;
-            long value = garden->seeds->data[i];
+            long value = processValue(garden, garden->seeds->data[i]);
 
-            while (map) {
-                value = mapValue(value, map->ranges);
-
-                map = map->next;
-            }
-
-            if (value < answer) {
+            if (!answer || value < answer) {
                 answer = value;
             }
         }

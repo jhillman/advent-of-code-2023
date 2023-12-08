@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 
 struct Seeds {
     int count;
@@ -9,8 +10,8 @@ struct Seeds {
 };
 
 struct Range {
-    long destination;
     long source;
+    long destination;
     long length;
 };
 
@@ -54,13 +55,13 @@ int compare(const void *a, const void *b) {
     return compareRanges(*(struct Range *)a, *(struct Range *)b);
 }
 
-void addRange(struct Ranges *ranges, struct Range range) {
+void addRange(struct Ranges *ranges, long source, long destination, long length, bool reverse) {
     if (ranges->count == ranges->capacity) {
         ranges->capacity += 5;
         ranges->data = (struct Range *)realloc(ranges->data, ranges->capacity * sizeof(struct Range));
     }
 
-    ranges->data[ranges->count++] = range;
+    ranges->data[ranges->count++] = (struct Range) { reverse ? destination : source, reverse ? source : destination, length };
 }
 
 struct Map {
@@ -74,11 +75,34 @@ struct Garden {
     struct Map *map;
 };
 
+long mapValue(long value, struct Ranges *ranges) {
+    long mappedValue = value;
+    struct Range *range = binarySearchRanges(ranges, value, 0, ranges->count);
+
+    if (range) {
+        mappedValue += range->destination - range->source;
+    }
+
+    return mappedValue;
+}
+
+long processValue(struct Garden *garden, long value) {
+    struct Map *map = garden->map;
+
+    while (map) {
+        value = mapValue(value, map->ranges);
+
+        map = map->next;
+    }
+
+    return value;
+}
+
 int digitCount(long number) {
     return (int)floor(log10((double)number)) + 1;
 }
 
-struct Garden *getGarden() {
+struct Garden *getGarden(bool reverse) {
     struct Garden *garden = NULL;
 
     FILE *inputFile = fopen("input.txt", "r");
@@ -88,7 +112,7 @@ struct Garden *getGarden() {
         char *seedLine;
         char *seedPosition;
         long seed;
-        struct Map *map;
+        struct Map *map = NULL;
         char name[32];
         long destination;
         long source;
@@ -120,7 +144,12 @@ struct Garden *getGarden() {
         free(seedLine);
 
         while (!feof(inputFile) && fscanf(inputFile, "%s map:", name)) {
-            if (!garden->map) {
+            if (reverse) {
+                garden->map = map;
+                map = (struct Map *)calloc(1, sizeof(struct Map));
+                map->next = garden->map;
+                garden->map = map;
+            } else if (!garden->map) {
                 garden->map = (struct Map *)calloc(1, sizeof(struct Map));
                 map = garden->map;
             } else {
@@ -132,7 +161,7 @@ struct Garden *getGarden() {
             map->ranges = (struct Ranges *)calloc(1, sizeof(struct Ranges));
 
             while (!feof(inputFile) && fscanf(inputFile, "%ld %ld %ld\n", &destination, &source, &length)) {
-                addRange(map->ranges, (struct Range){ destination, source, length });
+                addRange(map->ranges, source, destination, length, reverse);
             }
 
             qsort(map->ranges->data, map->ranges->count, sizeof(struct Range), compare);
@@ -159,15 +188,4 @@ void freeGarden(struct Garden *garden) {
     free(garden->seeds);
     freeMap(garden->map);
     free(garden);
-}
-
-long mapValue(long value, struct Ranges *ranges) {
-    long mappedValue = value;
-    struct Range *range = binarySearchRanges(ranges, value, 0, ranges->count);
-
-    if (range) {
-        mappedValue += range->destination - range->source;
-    }
-
-    return mappedValue;
 }
