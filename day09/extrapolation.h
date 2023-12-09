@@ -11,10 +11,11 @@ enum ExtrapolationType {
 struct Values {
     int count;
     long *data;
+    long value;
 };
 
 long extrapolatedValue(struct Values values, enum ExtrapolationType type) {
-    struct Values differences = { values.count - 1, malloc((values.count - 1) * sizeof(long)) };
+    struct Values differences = { values.count - 1, malloc((values.count - 1) * sizeof(long)), 0 };
     bool allZero = true;
 
     for (int i = 0; i < values.count - 1; i++) {
@@ -22,16 +23,29 @@ long extrapolatedValue(struct Values values, enum ExtrapolationType type) {
         allZero = allZero && differences.data[i] == 0;
     }
 
+    switch (type) {
+    case NEXT:
+        differences.value = differences.data[differences.count -1];
+        break;
+    case PREVIOUS:
+        differences.value = differences.data[0];
+        break;
+    }
+
     if (allZero) {
         free(differences.data);
 
-        return type == NEXT ? values.data[values.count - 1] : values.data[0];
+        return values.value;
     } else {
         long extrapolated = extrapolatedValue(differences, type);
 
+        if (type == PREVIOUS) {
+            extrapolated *= -1;
+        }
+
         free(differences.data);
 
-        return type == NEXT ? values.data[values.count - 1] + extrapolated : values.data[0] - extrapolated;
+        return values.value + extrapolated;
     }
 }
 
@@ -41,7 +55,7 @@ long getExtrapolatedSum(enum ExtrapolationType type) {
 
     if (inputFile) {
         char c;
-        struct Values values = { 0, NULL };
+        struct Values values = { 0, NULL, 0 };
 
         do {
             c = fgetc(inputFile);
@@ -60,6 +74,15 @@ long getExtrapolatedSum(enum ExtrapolationType type) {
         while (!feof(inputFile)) {
             for (int i = 0; i < values.count; i++) {
                 fscanf(inputFile, "%ld", &values.data[i]);
+            }
+
+            switch (type) {
+            case NEXT:
+                values.value = values.data[values.count - 1];
+                break;
+            case PREVIOUS:
+                values.value = values.data[0];
+                break;
             }
 
             sum += extrapolatedValue(values, type);
