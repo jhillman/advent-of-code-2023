@@ -39,26 +39,9 @@ long validArrangementCount(char *springs, int *groups, int groupCount) {
 
     for (int i = characterCount - 1; i >= 0; i--) {
         for (int j = groupBoolCount - 1; j >= 0; j--) {
-            damaged = false;
-            operational = false;
-
-            switch (springs[i]) {
-            case '#':
-                damaged = true;
-                break;
-            case '.':
-                operational = true;
-                break;
-            default:
-                operational = true;
-                damaged = true;
-            }
-
-            arrangements[i][j] = 0;
-            
-            if (damaged && groupBools[j]) {
+            if ((springs[i] == '#' || springs[i] =='?') && groupBools[j]) {
                 arrangements[i][j] += arrangements[i + 1][j + 1];
-            } else if (operational && !groupBools[j]) {
+            } else if ((springs[i] == '.' || springs[i] =='?') && !groupBools[j]) {
                 arrangements[i][j] += arrangements[i + 1][j + 1] + arrangements[i + 1][j];
             }
         }
