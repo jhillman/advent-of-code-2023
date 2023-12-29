@@ -1,17 +1,18 @@
-/* Day 23, part 2 = ? */
+/* Day 23, part 2 = 6738 */
 
-#include <stdio.h>
+#include "map.h"
 
 int main() {
-    FILE *inputFile = fopen("input.txt", "r");
+    struct Map *map = getMap();
+    int answer = 0;
 
-    if (inputFile) {
-        int answer = 0;
+    if (map) {
+        answer = longestHike(map, DRY);
 
-        fclose(inputFile);
-
-        printf("%d", answer);
+        freeMap(map);
     }
+
+    printf("%d", answer);
 
     return 0;
 }
