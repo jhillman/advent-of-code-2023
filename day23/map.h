@@ -7,6 +7,7 @@
 struct Location {
     int x;
     int y;
+    int distance;
 };
 
 struct Locations {
@@ -28,19 +29,18 @@ bool equal(struct Location a, struct Location b) {
     return a.x == b.x && a.y == b.y;
 }
 
-struct IntersectionDistance {
-    long index;
-    int distance;
+enum TerrainType {
+    PATH,
+    FOREST,
+    SLOPE_UP,
+    SLOPE_DOWN,
+    SLOPE_LEFT,
+    SLOPE_RIGHT
 };
 
-struct IntersectionDistances {
-    int count;
-    struct IntersectionDistance *data;
-};
-
-struct IntersectionData {
-    int count;
-    struct IntersectionDistances **distances;
+struct MapTerrain {
+    enum TerrainType type;
+    struct Locations *accessibleIntersections;
 };
 
 struct Map {
@@ -50,11 +50,8 @@ struct Map {
     struct Location start;
     struct Location end;
 
-    char **data;
+    struct MapTerrain **terrain;
     bool **visited;
-
-    struct IntersectionData *intersections;
-    int **intersectionLookup;
 };
 
 enum HikeType {
@@ -64,28 +61,19 @@ enum HikeType {
 
 void freeMap(struct Map *map) {
     for (int y = 0; y < map->height; y++) {
-        free(map->data[y]);
+        for (int x = 0; x < map->width; x++) {
+            if (map->terrain[y][x].accessibleIntersections) {
+                free(map->terrain[y][x].accessibleIntersections->data);
+                free(map->terrain[y][x].accessibleIntersections);
+            }
+        }
+
+        free(map->terrain[y]);
         free(map->visited[y]);
     }
 
-    free(map->data);
+    free(map->terrain);
     free(map->visited);
-
-    if (map->intersections) {
-        for (int i = 0; i < map->intersections->count; i++) {
-            free(map->intersections->distances[i]->data);
-            free(map->intersections->distances[i]);
-        }
-
-        free(map->intersections->distances);
-
-        for (int y = 0; y < map->height; y++) {
-            free(map->intersectionLookup[y]);
-        }
-
-        free(map->intersectionLookup);
-        free(map->intersections);
-    }
 
     free(map);
 }
@@ -97,7 +85,7 @@ int longestIcyHike(struct Map *map, struct Location location, int hikeLength) {
         return 0;
     }
 
-    if (map->data[location.y][location.x] == '#') {
+    if (map->terrain[location.y][location.x].type == FOREST) {
         return 0;
     }
 
@@ -114,7 +102,7 @@ int longestIcyHike(struct Map *map, struct Location location, int hikeLength) {
 
     map->visited[location.y][location.x] = true;
 
-    if (map->data[location.y][location.x] == '.') {
+    if (map->terrain[location.y][location.x].type == PATH) {
         for (int i = 0; i < 4; i++) {
             struct Location next = { location.x + xDeltas[i], location.y + yDeltas[i] };
             int length = longestIcyHike(map, next, hikeLength + 1);
@@ -124,18 +112,20 @@ int longestIcyHike(struct Map *map, struct Location location, int hikeLength) {
     } else {
         struct Location next = location;
 
-        switch (map->data[next.y][next.x]) {
-        case '^':
+        switch (map->terrain[next.y][next.x].type) {
+        case SLOPE_UP:
             --next.y;
             break;
-        case 'v':
+        case SLOPE_DOWN:
             ++next.y;
             break;
-        case '<':
+        case SLOPE_LEFT:
             --next.x;
             break;
-        case '>':
+        case SLOPE_RIGHT:
             ++next.x;
+            break;
+        default:
             break;
         }
 
@@ -147,73 +137,64 @@ int longestIcyHike(struct Map *map, struct Location location, int hikeLength) {
     return longest;
 }
 
-void addIntersection(struct Map *map, struct Location parent, struct Location location, int pathLength) {
-    struct Location locations[] = { parent, location };
-
+void addIntersection(struct Map *map, struct Location previous, struct Location current, int pathLength) {
     for (int i = 0; i < 2; i++) {
-        struct Location location = locations[i];
+        struct Location first = i == 0 ? previous : current;
+        struct Location second = i == 0 ? current : previous;
 
-        if (map->intersectionLookup[location.y][location.x] == -1) {
-            map->intersectionLookup[location.y][location.x] = map->intersections->count;
-
-            map->intersections->distances = (struct IntersectionDistances **)realloc(map->intersections->distances, (map->intersections->count + 1) * sizeof(struct IntersectionDistances *));
-            map->intersections->distances[map->intersections->count++] = (struct IntersectionDistances *)calloc(1, sizeof(struct IntersectionDistances *));
+        if (!map->terrain[first.y][first.x].accessibleIntersections) {
+            map->terrain[first.y][first.x].accessibleIntersections = (struct Locations *)calloc(1, sizeof(struct Locations));
         }
-    }
 
-    for (int i = 0; i < 2; i++) {
-        struct Location first = i == 0 ? parent : location;
-        struct Location second = i == 0 ? location : parent;
-        struct IntersectionDistances *distances = map->intersections->distances[map->intersectionLookup[first.y][first.x]];
+        second.distance = pathLength;
 
-        distances->data = (struct IntersectionDistance *)realloc(distances->data, (distances->count + 1) * sizeof(struct IntersectionDistance));
-        distances->data[distances->count++] = (struct IntersectionDistance){ map->intersectionLookup[second.y][second.x], pathLength };
+        addLocation(map->terrain[first.y][first.x].accessibleIntersections, second);
     }
 }
 
-void findIntersections(struct Map *map, struct Location parent, struct Location location) {
-    int pathLength = equal(location, parent) ? 0 : 1;
+void findIntersections(struct Map *map, struct Location previous, struct Location current) {
+    int pathLength = equal(current, previous) ? 0 : 1;
     int yDeltas[] = {-1, 0, 1, 0};
     int xDeltas[] = {0, 1, 0, -1};
     struct Locations *steps = (struct Locations *)calloc(1, sizeof(struct Locations));
 
     while (true) {
-        map->data[location.y][location.x] = ' ';
+        map->terrain[current.y][current.x].type = FOREST;
         ++pathLength;
 
-        if (equal(location, map->end)) {
-            addIntersection(map, parent, location, pathLength - 1);
+        if (equal(current, map->end)) {
+            addIntersection(map, previous, current, pathLength - 1);
         }
 
         steps->count = 0;
 
         for (int i = 0; i < 4; i++) {
-            struct Location next = { location.x + xDeltas[i], location.y + yDeltas[i] };
+            struct Location next = { current.x + xDeltas[i], current.y + yDeltas[i] };
 
             if (!(next.x >= 0 && next.x < map->width && next.y >= 0 && next.y < map->height)) {
                 continue;
             }
 
-            if (equal(next, parent)) {
+            if (equal(next, previous)) {
                 continue;
             }
 
-            if (map->data[next.y][next.x] == '.') {
+            if (map->terrain[next.y][next.x].type != FOREST) {
                 addLocation(steps, next);
             }
 
-            if (map->intersectionLookup[next.y][next.x] > -1) {
-                addIntersection(map, parent, next, pathLength);
+            if (map->terrain[next.y][next.x].accessibleIntersections) {
+                addIntersection(map, previous, next, pathLength);
             }
         }
 
         if (steps->count == 1) {
-            location = *steps->data;
+            current = *steps->data;
         } else if (steps->count > 0) {
-            addIntersection(map, parent, location, pathLength - 1);
+            addIntersection(map, previous, current, pathLength - 1);
 
             for (int i = 0; i < steps->count; i++) {
-                findIntersections(map, location, steps->data[i]);
+                findIntersections(map, current, steps->data[i]);
             }
         } else {
             break;
@@ -224,30 +205,30 @@ void findIntersections(struct Map *map, struct Location parent, struct Location 
     free(steps);
 }
 
-int longestDryHike(struct Map *map, long index, long endIndex, int hikeLength) {
-    if (index == endIndex) {
+int longestDryHike(struct Map *map, struct Location location, struct Location end, int hikeLength) {
+    if (equal(location, end)) {
         return hikeLength;
     }
 
-    *map->visited[index] = true;
+    map->visited[location.y][location.x] = true;
 
     int longest = 0;
 
-    struct IntersectionDistances *distances = map->intersections->distances[index];
+    struct Locations *intersections = map->terrain[location.y][location.x].accessibleIntersections;
 
-    for (int i = 0; i < distances->count; i++) {
-        struct IntersectionDistance path = distances->data[i];
+    for (int i = 0; i < intersections->count; i++) {
+        struct Location intersection = intersections->data[i];
 
-        if (*map->visited[path.index]) {
+        if (map->visited[intersection.y][intersection.x]) {
             continue;
         }
 
-        int length = longestDryHike(map, path.index, endIndex, hikeLength + path.distance);
+        int length = longestDryHike(map, intersection, end, hikeLength + intersection.distance);
 
         longest = max(longest, length);
     }
 
-    *map->visited[index] = false;
+    map->visited[location.y][location.x] = false;
 
     return longest;
 }
@@ -256,30 +237,11 @@ int longestHike(struct Map *map, enum HikeType type) {
     int longest = 0;
 
     if (type == DRY) {
-        map->intersections = (struct IntersectionData *)calloc(1, sizeof(struct IntersectionData));
-        map->intersectionLookup = (int **)malloc(map->height * sizeof(int *));
-
-        for (int y = 0; y < map->height; y++) {
-            map->intersectionLookup[y] = (int *)malloc(map->width * sizeof(int));
-
-            for (int x = 0; x < map->width; x++) {
-                map->intersectionLookup[y][x] = -1;
-
-                if (map->data[y][x] != '#' && map->data[y][x] != '.') {
-                    map->data[y][x] = '.';
-                }
-            }
-        }
-
         findIntersections(map, map->start, map->start);
 
-        int startIndex = map->intersectionLookup[map->start.y][map->start.x];
-        int endIndex = map->intersectionLookup[map->end.y][map->end.x];
-        struct IntersectionDistance lastPath = *map->intersections->distances[endIndex]->data;
+        struct Location end = *map->terrain[map->end.y][map->end.x].accessibleIntersections->data;
 
-        endIndex = lastPath.index;
-
-        longest = longestDryHike(map, startIndex, endIndex, lastPath.distance);
+        longest = end.distance + longestDryHike(map, map->start, end, 0);
     } else if (type == ICY) {
         longest = longestIcyHike(map, map->start, 0);
     }
@@ -309,22 +271,41 @@ struct Map *getMap() {
 
         fseek(inputFile, 0, SEEK_SET);
 
-        map->data = (char **)malloc(map->height * sizeof(char *));
+        map->terrain = (struct MapTerrain **)malloc(map->height * sizeof(struct MapTerrain *));
         map->visited = (bool **)malloc(map->height * sizeof(bool *));
 
         for (int y = 0; y < map->height; y++) {
-            map->data[y] = (char *)malloc(map->width * sizeof(char));
+            map->terrain[y] = (struct MapTerrain *)calloc(map->width, sizeof(struct MapTerrain));
             map->visited[y] = (bool *)calloc(map->width, sizeof(bool));
 
             for (int x = 0; x < map->width; x++) {
-                map->data[y][x] = fgetc(inputFile);
+                switch (fgetc(inputFile)) {
+                case '.':
+                    map->terrain[y][x].type = PATH;
 
-                if (y == 0 && map->data[y][x] == '.') {
-                    map->start.x = x;
-                    map->start.y = y;
-                } else if (y == map->height - 1 && map->data[y][x] == '.') {
-                    map->end.x = x;
-                    map->end.y = y;
+                    if (y == 0) {
+                        map->start.x = x;
+                        map->start.y = y;
+                    } else if (y == map->height - 1) {
+                        map->end.x = x;
+                        map->end.y = y;
+                    }
+                    break;
+                case '#':
+                    map->terrain[y][x].type = FOREST;
+                    break;
+                case '^':
+                    map->terrain[y][x].type = SLOPE_UP;
+                    break;
+                case 'v':
+                    map->terrain[y][x].type = SLOPE_DOWN;
+                    break;
+                case '<':
+                    map->terrain[y][x].type = SLOPE_LEFT;
+                    break;
+                case '>':
+                    map->terrain[y][x].type = SLOPE_RIGHT;
+                    break;
                 }
             }
 
